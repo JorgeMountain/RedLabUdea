@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth"
 import { AddItemForm, InventoryTable } from "./item-forms"
 import { Separator } from "@/components/ui/separator"
+import type { LabItemRow } from "@/types/database"
 
 export default async function AdminItemsPage() {
   const { supabase } = await requireRole("teacher")
@@ -9,6 +10,7 @@ export default async function AdminItemsPage() {
     .from("lab_items")
     .select("*")
     .order("created_at", { ascending: false })
+    .returns<LabItemRow[]>()
 
   return (
     <div className="space-y-8">

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser"
+import type { ProfileRow } from "@/types/database"
 
 const signInSchema = z.object({
   email: z.string().email("Ingresa un correo valido"),
@@ -84,7 +85,7 @@ function SignInForm() {
         .from("profiles")
         .select("*")
         .eq("user_id", user.id)
-        .maybeSingle()
+        .maybeSingle<ProfileRow>()
 
       const metadataDisplayName =
         typeof user.user_metadata?.display_name === "string"

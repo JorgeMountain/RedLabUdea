@@ -6,6 +6,17 @@ import {
 } from "@/components/ReservationTable"
 import { ResourceCard } from "@/components/ResourceCard"
 import { Separator } from "@/components/ui/separator"
+import type {
+  ReservableResourceRow,
+  ReservationRow,
+} from "@/types/database"
+
+type ReservationWithResource = ReservationRow & {
+  reservable_resources: Pick<
+    ReservableResourceRow,
+    "id" | "name" | "requires_approval"
+  > | null
+}
 
 export default async function StudentReservationsPage() {
   const { supabase, user } = await requireRole("student")
@@ -14,7 +25,8 @@ export default async function StudentReservationsPage() {
     supabase
       .from("reservable_resources")
       .select("*")
-      .order("name", { ascending: true }),
+      .order("name", { ascending: true })
+      .returns<ReservableResourceRow[]>(),
     supabase
       .from("reservations")
       .select(
@@ -31,7 +43,8 @@ export default async function StudentReservationsPage() {
       `
       )
       .eq("student_id", user.id)
-      .order("start_at", { ascending: false }),
+      .order("start_at", { ascending: false })
+      .returns<ReservationWithResource[]>(),
   ])
 
   const reservationData: ReservationRecord[] =

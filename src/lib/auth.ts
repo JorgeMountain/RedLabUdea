@@ -33,7 +33,7 @@ export async function getUserProfile() {
     .from("profiles")
     .select("*")
     .eq("user_id", user.id)
-    .maybeSingle()
+    .maybeSingle<ProfileRow>()
 
   if (profileError) {
     console.error("[auth:getProfile]", profileError)
@@ -46,16 +46,17 @@ export async function getUserProfile() {
         ? user.user_metadata.display_name
         : null
     const fallbackName = metadataDisplayName ?? user.email ?? ""
+    const fallbackProfile: ProfileRow = {
+      user_id: user.id,
+      display_name: fallbackName,
+      role: "student",
+      created_at: null,
+    }
 
     return {
       supabase,
       user,
-      profile: {
-        user_id: user.id,
-        display_name: fallbackName,
-        role: "student",
-        created_at: null,
-      },
+      profile: fallbackProfile,
     }
   }
 

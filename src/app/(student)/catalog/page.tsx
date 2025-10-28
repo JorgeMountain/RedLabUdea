@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { requireRole } from "@/lib/auth"
+import type { LabItemRow } from "@/types/database"
 import { ItemCard } from "@/components/ItemCard"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +12,7 @@ export default async function CatalogPage() {
     .from("lab_items")
     .select("*")
     .order("name", { ascending: true })
+    .returns<LabItemRow[]>()
 
   return (
     <div className="space-y-8">

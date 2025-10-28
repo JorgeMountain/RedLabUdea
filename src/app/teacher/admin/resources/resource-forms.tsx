@@ -37,7 +37,7 @@ const resourceSchema = z.object({
   location: z.string().optional(),
   category: z.string().optional(),
   description: z.string().optional(),
-  requires_approval: z.boolean().default(true),
+  requires_approval: z.boolean(),
 })
 
 type ResourceFormValues = z.infer<typeof resourceSchema>

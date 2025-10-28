@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { requireRole } from "@/lib/auth"
+import type { LoanRequestRow } from "@/types/database"
 
 const loanItemSchema = z.object({
   itemId: z.string().uuid(),
@@ -73,7 +74,7 @@ export async function approveLoanRequestAction(requestId: string) {
     .from("loan_requests")
     .select("*")
     .eq("id", id)
-    .single()
+    .single<LoanRequestRow>()
 
   if (requestError || !request) {
     console.error("[loan:approve] request", requestError)

@@ -3,6 +3,17 @@ import { LoanRequestForm } from "./loan-request-form"
 import { RequestTable, type RequestRecord } from "@/components/RequestTable"
 import { Separator } from "@/components/ui/separator"
 import { ItemCard } from "@/components/ItemCard"
+import type {
+  LabItemRow,
+  LoanRequestItemRow,
+  LoanRequestRow,
+} from "@/types/database"
+
+type LoanRequestWithItems = LoanRequestRow & {
+  loan_request_items: (LoanRequestItemRow & {
+    lab_items: Pick<LabItemRow, "name" | "code"> | null
+  })[] | null
+}
 
 type RequestsPageProps = {
   searchParams?: Promise<{
@@ -17,7 +28,11 @@ export default async function RequestsPage({
   const { supabase, user } = await requireRole("student")
 
   const [{ data: items }, { data: requestRows }] = await Promise.all([
-    supabase.from("lab_items").select("*").order("name", { ascending: true }),
+    supabase
+      .from("lab_items")
+      .select("*")
+      .order("name", { ascending: true })
+      .returns<LabItemRow[]>(),
     supabase
       .from("loan_requests")
       .select(
@@ -38,7 +53,8 @@ export default async function RequestsPage({
         `
       )
       .eq("student_id", user.id)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .returns<LoanRequestWithItems[]>(),
   ])
 
   const mappedItems =

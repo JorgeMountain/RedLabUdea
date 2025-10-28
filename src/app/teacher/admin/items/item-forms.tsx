@@ -34,7 +34,7 @@ const baseSchema = z.object({
   name: z.string().min(3, "Ingresa un nombre valido."),
   code: z.string().optional(),
   category: z.string().optional(),
-  stock: z.coerce.number().int().min(0),
+  stock: z.number().int().min(0),
   spec_summary: z.string().optional(),
   datasheet_url: z.string().url("Ingresa una URL valida.").optional().or(z.literal("")),
 })
