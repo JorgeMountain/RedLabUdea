@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
+import type { ReservationActionResult } from "@/actions/reservations"
 import {
   reservationApproveAction,
   reservationCancelAction,
@@ -71,13 +72,17 @@ export function ReservationTable({ data, mode }: ReservationTableProps) {
 
   const runAction = async (
     id: string,
-    action: (id: string) => Promise<void>,
+    action: (id: string) => Promise<ReservationActionResult>,
     success: string
   ) => {
     startTransition(async () => {
       setPendingId(id)
       try {
-        await action(id)
+        const result = await action(id)
+        if (!result.ok) {
+          toast.error(result.message)
+          return
+        }
         toast.success(success)
         router.refresh()
       } catch (error) {

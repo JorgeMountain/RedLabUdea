@@ -18,6 +18,9 @@ export async function getUserProfile() {
   } = await supabase.auth.getUser()
 
   if (userError) {
+    if (userError.name === "AuthSessionMissingError") {
+      return null
+    }
     console.error("[auth:getUser]", userError)
     return null
   }

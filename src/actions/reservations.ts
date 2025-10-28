@@ -10,6 +10,10 @@ import {
   LAB_TIMEZONE,
 } from "@/lib/utils"
 
+export type ReservationActionResult<T = void> =
+  | { ok: true; data?: T }
+  | { ok: false; message: string }
+
 const reservationSchema = z.object({
   resourceId: z.string().uuid(),
   startAt: z.string().datetime(),
@@ -53,19 +57,32 @@ async function ensureNoOverlap(
   }
 }
 
-export async function reservationCreateAction(input: unknown) {
+export async function reservationCreateAction(
+  input: unknown
+): Promise<ReservationActionResult<{ reservationId: string }>> {
   const { supabase, user } = await requireRole("student")
-  const payload = reservationSchema.parse(input)
+  const parsed = reservationSchema.safeParse(input)
 
+  if (!parsed.success) {
+    return { ok: false, message: "Datos invalidos para la reserva." }
+  }
+
+  const payload = parsed.data
   const startUtc = new Date(payload.startAt)
   const endUtc = new Date(payload.endAt)
 
   if (!isWithinLabHours(startUtc, endUtc, LAB_TIMEZONE)) {
-    throw new Error("El horario debe estar dentro de las horas del laboratorio (07:00-20:00).")
+    return {
+      ok: false,
+      message: "El horario debe estar dentro de las horas del laboratorio (07:00-20:00).",
+    }
   }
 
   if (!isValidDuration(startUtc, endUtc)) {
-    throw new Error("Las reservas deben durar entre 30 minutos y 4 horas.")
+    return {
+      ok: false,
+      message: "Las reservas deben durar entre 30 minutos y 4 horas.",
+    }
   }
 
   const startIso = startUtc.toISOString()
@@ -79,10 +96,26 @@ export async function reservationCreateAction(input: unknown) {
 
   if (resourceError || !resource) {
     console.error("[reservation:create] resource", resourceError)
-    throw new Error("Recurso no encontrado.")
+    return { ok: false, message: "Recurso no encontrado." }
   }
 
-  await ensureNoOverlap(supabase, payload.resourceId, startIso, endIso)
+  try {
+    await ensureNoOverlap(supabase, payload.resourceId, startIso, endIso)
+  } catch (error) {
+    if (error instanceof Error) {
+      if (
+        error.message === "Ya hay una reserva en ese horario." ||
+        error.message === "No se pudo verificar la disponibilidad."
+      ) {
+        return { ok: false, message: error.message }
+      }
+    }
+    console.error("[reservation:create] availability", error)
+    return {
+      ok: false,
+      message: "No se pudo verificar la disponibilidad.",
+    }
+  }
 
   const status = resource.requires_approval ? "pending" : "approved"
 
@@ -100,20 +133,20 @@ export async function reservationCreateAction(input: unknown) {
 
   if (error || !reservation) {
     console.error("[reservation:create] insert", error)
-    throw new Error("No se pudo crear la reserva.")
+    return { ok: false, message: "No se pudo crear la reserva." }
   }
 
+  revalidateReservationViews()
   if (status === "approved") {
-    revalidateReservationViews()
     revalidatePath("/teacher/admin/resources")
-  } else {
-    revalidateReservationViews()
   }
 
-  return reservation.id
+  return { ok: true, data: { reservationId: reservation.id } }
 }
 
-export async function reservationApproveAction(reservationId: string) {
+export async function reservationApproveAction(
+  reservationId: string
+): Promise<ReservationActionResult> {
   const { supabase, user } = await requireRole("teacher")
   const id = z.string().uuid().parse(reservationId)
 
@@ -125,20 +158,33 @@ export async function reservationApproveAction(reservationId: string) {
 
   if (error || !reservation) {
     console.error("[reservation:approve] reservation", error)
-    throw new Error("Reserva no encontrada.")
+    return { ok: false, message: "Reserva no encontrada." }
   }
 
   if (reservation.status !== "pending") {
-    throw new Error("Solo se pueden aprobar reservas pendientes.")
+    return { ok: false, message: "Solo se pueden aprobar reservas pendientes." }
   }
 
-  await ensureNoOverlap(
-    supabase,
-    reservation.resource_id,
-    reservation.start_at,
-    reservation.end_at,
-    id
-  )
+  try {
+    await ensureNoOverlap(
+      supabase,
+      reservation.resource_id,
+      reservation.start_at,
+      reservation.end_at,
+      id
+    )
+  } catch (error) {
+    if (error instanceof Error) {
+      if (
+        error.message === "Ya hay una reserva en ese horario." ||
+        error.message === "No se pudo verificar la disponibilidad."
+      ) {
+        return { ok: false, message: error.message }
+      }
+    }
+    console.error("[reservation:approve] availability", error)
+    return { ok: false, message: "No se pudo verificar la disponibilidad." }
+  }
 
   const { error: updateError } = await supabase
     .from("reservations")
@@ -151,13 +197,16 @@ export async function reservationApproveAction(reservationId: string) {
 
   if (updateError) {
     console.error("[reservation:approve] update", updateError)
-    throw new Error("No se pudo aprobar la reserva.")
+    return { ok: false, message: "No se pudo aprobar la reserva." }
   }
 
   revalidateReservationViews()
+  return { ok: true }
 }
 
-export async function reservationRejectAction(reservationId: string) {
+export async function reservationRejectAction(
+  reservationId: string
+): Promise<ReservationActionResult> {
   const { supabase, user } = await requireRole("teacher")
   const id = z.string().uuid().parse(reservationId)
 
@@ -169,11 +218,11 @@ export async function reservationRejectAction(reservationId: string) {
 
   if (error || !reservation) {
     console.error("[reservation:reject] reservation", error)
-    throw new Error("Reserva no encontrada.")
+    return { ok: false, message: "Reserva no encontrada." }
   }
 
   if (reservation.status !== "pending") {
-    throw new Error("Solo se pueden rechazar reservas pendientes.")
+    return { ok: false, message: "Solo se pueden rechazar reservas pendientes." }
   }
 
   const { error: updateError } = await supabase
@@ -187,13 +236,16 @@ export async function reservationRejectAction(reservationId: string) {
 
   if (updateError) {
     console.error("[reservation:reject] update", updateError)
-    throw new Error("No se pudo rechazar la reserva.")
+    return { ok: false, message: "No se pudo rechazar la reserva." }
   }
 
   revalidateReservationViews()
+  return { ok: true }
 }
 
-export async function reservationCancelAction(reservationId: string) {
+export async function reservationCancelAction(
+  reservationId: string
+): Promise<ReservationActionResult> {
   const { supabase, user, profile } = await requireUser()
   const id = z.string().uuid().parse(reservationId)
 
@@ -205,18 +257,18 @@ export async function reservationCancelAction(reservationId: string) {
 
   if (error || !reservation) {
     console.error("[reservation:cancel] reservation", error)
-    throw new Error("Reserva no encontrada.")
+    return { ok: false, message: "Reserva no encontrada." }
   }
 
   if (
     profile.role === "student" &&
     reservation.student_id !== user.id
   ) {
-    throw new Error("No puedes cancelar reservas de otros usuarios.")
+    return { ok: false, message: "No puedes cancelar reservas de otros usuarios." }
   }
 
   if (!["pending", "approved"].includes(reservation.status)) {
-    throw new Error("Solo se pueden cancelar reservas pendientes o aprobadas.")
+    return { ok: false, message: "Solo se pueden cancelar reservas pendientes o aprobadas." }
   }
 
   const { error: updateError } = await supabase
@@ -230,13 +282,16 @@ export async function reservationCancelAction(reservationId: string) {
 
   if (updateError) {
     console.error("[reservation:cancel] update", updateError)
-    throw new Error("No se pudo cancelar la reserva.")
+    return { ok: false, message: "No se pudo cancelar la reserva." }
   }
 
   revalidateReservationViews()
+  return { ok: true }
 }
 
-export async function reservationMarkDoneAction(reservationId: string) {
+export async function reservationMarkDoneAction(
+  reservationId: string
+): Promise<ReservationActionResult> {
   const { supabase, user } = await requireRole("teacher")
   const id = z.string().uuid().parse(reservationId)
 
@@ -248,11 +303,14 @@ export async function reservationMarkDoneAction(reservationId: string) {
 
   if (error || !reservation) {
     console.error("[reservation:done] reservation", error)
-    throw new Error("Reserva no encontrada.")
+    return { ok: false, message: "Reserva no encontrada." }
   }
 
   if (!["approved"].includes(reservation.status)) {
-    throw new Error("Solo se pueden marcar como realizadas las reservas aprobadas.")
+    return {
+      ok: false,
+      message: "Solo se pueden marcar como realizadas las reservas aprobadas.",
+    }
   }
 
   const { error: updateError } = await supabase
@@ -266,8 +324,9 @@ export async function reservationMarkDoneAction(reservationId: string) {
 
   if (updateError) {
     console.error("[reservation:done] update", updateError)
-    throw new Error("No se pudo marcar como realizada.")
+    return { ok: false, message: "No se pudo marcar como realizada." }
   }
 
   revalidateReservationViews()
+  return { ok: true }
 }

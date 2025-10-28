@@ -55,11 +55,15 @@ export function ReservationForm({ resources }: ReservationFormProps) {
     }
     startTransition(async () => {
       try {
-        await reservationCreateAction({
+        const result = await reservationCreateAction({
           resourceId,
           startAt: new Date(start).toISOString(),
           endAt: new Date(end).toISOString(),
         })
+        if (!result.ok) {
+          toast.error(result.message)
+          return
+        }
         toast.success("Reserva registrada.")
         router.refresh()
       } catch (error) {
